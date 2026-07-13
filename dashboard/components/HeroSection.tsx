@@ -27,9 +27,10 @@ export function HeroSection({ state, lastError, walletAddress }: Props) {
             <p className="mt-2 text-xs text-red-400">Last error: {lastError}</p>
           )}
         </div>
-        <div className="flex flex-col gap-2 text-right shrink-0">
-          <ArchitectureDiagram />
-        </div>
+      </div>
+
+      <div className="mt-6">
+        <ArchitectureDiagram />
       </div>
     </header>
   );
@@ -37,8 +38,8 @@ export function HeroSection({ state, lastError, walletAddress }: Props) {
 
 function ArchitectureDiagram() {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 font-mono text-xs leading-relaxed min-w-[280px]">
-      <div className="flex flex-col gap-2">
+    <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 font-mono text-xs leading-relaxed">
+      <div className="flex min-w-max items-center gap-2">
         <AgentBlock name="yield-router-agent" role="orchestrator" />
         <Arrow label="x402 pay $0.001" />
         <AgentBlock name="signal-aggregator-agent" role="APY data" />
@@ -56,7 +57,7 @@ function ArchitectureDiagram() {
 
 function AgentBlock({ name, role }: { name: string; role: string }) {
   return (
-    <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-2">
+    <div className="rounded-lg border border-zinc-700 bg-zinc-900 p-2 text-center">
       <div className="font-bold text-celo-gold">{name}</div>
       <div className="text-[10px] text-zinc-500">{role}</div>
     </div>
@@ -65,9 +66,9 @@ function AgentBlock({ name, role }: { name: string; role: string }) {
 
 function Arrow({ label }: { label: string }) {
   return (
-    <div className="flex items-center gap-1 pl-4 text-zinc-500">
-      <span>↓</span>
-      <span className="text-[10px]">{label}</span>
+    <div className="flex flex-col items-center gap-0.5 px-1 text-zinc-500">
+      <span>→</span>
+      <span className="whitespace-nowrap text-[10px]">{label}</span>
     </div>
   );
 }

@@ -105,16 +105,7 @@ export default function Dashboard() {
         walletAddress={state?.walletAddress ?? ""}
       />
 
-      <div className="mt-8">
-        <RouterStatsPanel events={allEvents} />
-      </div>
-
-      <div className="mt-8">
-        <ActivityFeed events={allEvents} />
-      </div>
-
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <AgentStatusCards agents={state?.agents ?? []} />
         <OnChainProof
           balance={state?.balance ?? { celo: "0", usdc: "0", usdm: "0" }}
           recentTransactions={state?.recentTransactions ?? []}
@@ -122,6 +113,15 @@ export default function Dashboard() {
           pool={state?.pool ?? null}
           risk={state?.risk ?? null}
         />
+        <AgentStatusCards agents={state?.agents ?? []} />
+      </div>
+
+      <div className="mt-8">
+        <RouterStatsPanel events={allEvents} />
+      </div>
+
+      <div className="mt-8">
+        <ActivityFeed events={allEvents} />
       </div>
     </main>
   );

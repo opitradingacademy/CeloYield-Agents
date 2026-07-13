@@ -1,11 +1,22 @@
-# Celo Agentic Payments — Cooperative Yield Router
+# CeloYield Agents — Cooperative Yield Router
 
-Hackathon: Celo Builders Agentic Payments / DeFAI track.
+Hackathon: Celo Builders — Agentic Payments & DeFAI (`agentic-payments-defai`,
+ends 2026-07-20). Submission repo:
+[opitradingacademy/CeloYield-Agents](https://github.com/opitradingacademy/CeloYield-Agents).
 
-Three cooperative agents paying each other via x402 micropayments, registered
-on ERC-8004, executing real Mento V3 FPMM swaps on Celo. Each agent has its
-own Privy MPC wallet. The dashboard at `localhost:3003` shows everything in
-real time.
+Three cooperative agents paying each other via **real x402 micropayments on
+Celo mainnet**, registered on ERC-8004, executing real Mento V3 FPMM swaps.
+Each agent shares a Privy MPC wallet. Live and unattended:
+
+| Service | URL |
+|---|---|
+| signal-aggregator-agent | https://celoyield-signal.vercel.app |
+| risk-manager-agent | https://celoyield-risk.vercel.app |
+| yield-router-agent | background worker on Railway (no public URL) |
+
+The dashboard (`localhost:3003`, not deployed) shows on-chain balances/txs
+live; the Activity Feed panel only works when running everything locally
+(see gotchas — it reads a local file the deployed agents don't share).
 
 ## What's running right now
 
@@ -36,11 +47,17 @@ real time.
                   └─────────────────┘
 ```
 
-**Real on-chain proof** (Sepolia):
-- Wallet: `0x2254256D89F17789f112335D643F52d3B043dF7E` (~12 CELO, 18 USDC, 0.16 USDm)
-- Multiple real USDC→USDm swaps executed via Privy signing
-- All tx hashes link to https://celo-sepolia.blockscout.com
-- `signal-aggregator-agent` registered on ERC-8004 as agent ID 394
+**Real on-chain proof** (Celo mainnet, chainId 42220):
+- Wallet: `0x2254256D89F17789f112335D643F52d3B043dF7E`
+- All 3 agents registered on ERC-8004 mainnet Identity Registry:
+  signal-aggregator-agent = agent ID **9672**, risk-manager-agent = **9670**,
+  yield-router-agent = **9671**
+- Celo Builders attribution tag `celo_baf40ede1a50` embedded as an ERC-8021
+  suffix on every outbound tx (registration, x402 payments, swaps)
+- `X402_MODE=live` — x402 payments are real tagged native-CELO transfers,
+  verified on-chain by the receiving server before serving the request (see
+  `shared/x402-mock.ts`), not a mocked header
+- All tx hashes link to https://celo.blockscout.com
 
 ## Stack
 
@@ -48,7 +65,7 @@ real time.
 |---|---|---|
 | Wallets | Privy MPC (`@privy-io/node@0.25.0`) | 50K free signatures/month |
 | RPC | Tenderly gateway (`celo-sepolia.gateway.tenderly.co`) | Other public Sepolia RPCs are degraded as of 2026-07 |
-| x402 | Mock mode (header-based) | Free; thirdweb/Daydreams upgrade path when revenue justifies |
+| x402 | Live mode: self-facilitated real CELO transfer | `X402_MODE=live` in `shared/x402-mock.ts` — tagged, on-chain, no paid facilitator needed |
 | Identity | ERC-8004 Identity Registry | Real contract on Sepolia |
 | Swap protocol | Mento V3 FPMM (direct pool proxy call) | The SDK's `buildSwapTransaction` is broken for V3; we call the pool directly |
 | Dashboard | Next.js 15 + Tailwind 3.4 + viem 2.39 | Polls server-side aggregator every 3s |
@@ -177,35 +194,37 @@ npx tsx shared/test-privy-signer.ts
 npx tsx shared/register-both.ts
 ```
 
-## Switching to mainnet
+## Production deployment
 
-```bash
-export NETWORK=mainnet
-```
+The 3 agents run unattended, mainnet, no laptop required:
 
-The RPC and token addresses swap automatically (`shared/network.ts`). But:
+- **signal-aggregator-agent** and **risk-manager-agent** → Vercel (Next.js
+  API routes, git-connected to `main`). Root Directory set per-project via
+  the Vercel API (`rootDirectory`), install command overridden to
+  `cd .. && npm install --legacy-peer-deps` (workspace deps are hoisted to
+  the monorepo root, the default install only covers the sub-package).
+- **yield-router-agent** → Railway, deployed from `Dockerfile.router` (a
+  persistent worker — Vercel serverless functions can't run a `setInterval`
+  loop). Config pinned in `railway.json`. Env: `NETWORK=mainnet
+  X402_MODE=live YIELD_CYCLE_MS=180000 TRADE_AMOUNT_USDM=0.2
+  AUTO_APPROVE=true`.
 
-1. **Re-register ERC-8004** — mainnet has a different Identity Registry contract.
-2. **Use EOA + KMS for signing** — Privy's MPC works on mainnet but costs
-   $0.10/op after the free tier; for high-frequency mainnet use, a self-custody
-   path (Turnkey or AWS KMS) is cheaper.
-3. **Real x402 settlement** — switch `X402_MODE=thirdweb` and set the thirdweb
-   credentials (costs $99+/mo + 0.3%/tx).
-4. **Add real gas estimation** — `wallet.estimateGas()` before every tx; the
-   $0.0005 constant in `shared/pricing.ts` is only valid for Sepolia.
-5. **Add Moola + Ubeswap** — Sepolia only has Mento; mainnet has 5+ protocols.
+See `CLAUDE.md` → "Deployment (Vercel + Railway)" for the full list of
+gotchas hit getting this working (Next.js file tracing, Railway's Railpack
+builder defaulting to `npm ci`, Vercel Deployment Protection on team-suffixed
+domains, etc.) — worth reading before touching the deploy config again.
 
-## Contract addresses (Celo Sepolia, chainId 11142220)
+## Contract addresses (Celo mainnet, chainId 42220)
 
 | What | Address |
 |---|---|
-| ERC-8004 Identity Registry | `0x8004A818BFB912233c491871b3d84c89A494BD9e` |
-| ERC-8004 Reputation Registry | `0x8004B663056A597Dffe9eCcC1965A193B7388713` |
-| USDm (real, liquid) | `0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b` |
-| USDC | `0x01C5C0122039549AD1493B8220cABEdD739BC44E` |
-| Mento V3 FPMM USDC/USDm proxy | `0x7109E0A9B4623e90755b7e5c4e10F089E5Bf8bDb` |
+| ERC-8004 Identity Registry | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` |
+| ERC-8004 Reputation Registry | `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` |
+| USDm | `0x765DE816845861e75A25fCA122bb6898B8B1282a` |
+| USDC | `0xcebA9300f2b948710d2653dD7B07f33A8B32118C` |
 
-Mainnet addresses are in `shared/network.ts`.
+Sepolia addresses (legacy demo, no longer used for the hackathon) are in
+`shared/network.ts`.
 
 ## Key gotchas (verified against real SDKs/RPCs)
 
@@ -230,6 +249,22 @@ Mainnet addresses are in `shared/network.ts`.
   looking for a `shared/` directory marker (not file — file may not exist yet).
 - **Activity log noise**: don't log routine 402s from liveness pings — floods
   the feed.
+- **Activity log doesn't survive deployment**: it's a local JSONL file — once
+  agents run on separate Vercel/Railway instances there's no shared disk, so
+  the dashboard's live feed goes silent for production activity (on-chain
+  panels still work, they hit Blockscout directly).
+- **`shared/.agent-wallets.json` must be committed**, not gitignored — no
+  private keys in it (Privy custody), and without it the deployed agents try
+  to recreate a wallet with an `external_id` Privy already has, which errors.
+- **Next.js won't bundle files read via `fs` at runtime** unless told to —
+  add `outputFileTracingIncludes` in `next.config.js` for any route that
+  reads `shared/.agent-wallets.json` or similar.
+- **Celo mainnet's intrinsic gas floor is above 21000** for a plain transfer;
+  Privy rejects `gas: 21000` — use `30000`.
+- **Mento has no CELO↔USDC pool** (checked all 18 mainnet pools — every one
+  is stablecoin-to-stablecoin). Converting CELO to trading capital needs an
+  external DEX (app.mento.org's own frontend, or Ubeswap) via a personal
+  wallet, not the Mento SDK used by this repo.
 
 ## License
 
