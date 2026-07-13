@@ -1,5 +1,4 @@
 import { DashboardState } from "@/lib/types";
-import { SwapPanel } from "./SwapPanel";
 
 interface Props {
   state: DashboardState | null;
@@ -14,23 +13,19 @@ export function HeroSection({ state, lastError, walletAddress }: Props) {
         <div className="flex-1 min-w-0">
           <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-celo-gold/40 bg-celo-gold/10 px-3 py-1 text-xs font-medium text-celo-gold">
             <span className="status-dot inline-block h-2 w-2 rounded-full bg-celo-gold" />
-            LIVE — Celo Sepolia
+            LIVE — Celo Mainnet
           </div>
           <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
-            yield-router-agent
+            CeloYield Agents
           </h1>
           <p className="mt-2 max-w-2xl text-zinc-400">
-            3 cooperative agents paying each other via x402, executing Mento V3
-            FPMM swaps on Celo. Real on-chain. Signed by Privy MPC.
+            3 cooperative agents, registered on ERC-8004, paying each other via
+            real x402 CELO transfers — running unattended on Celo mainnet and
+            executing real Mento V3 FPMM swaps. No operator in the loop.
           </p>
           {lastError && (
             <p className="mt-2 text-xs text-red-400">Last error: {lastError}</p>
           )}
-
-          {/* Inline swap panel — full-width banner below the description */}
-          <div className="mt-6">
-            <SwapPanel walletAddress={walletAddress} />
-          </div>
         </div>
         <div className="flex flex-col gap-2 text-right shrink-0">
           <ArchitectureDiagram />

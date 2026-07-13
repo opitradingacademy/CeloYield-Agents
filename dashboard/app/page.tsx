@@ -6,7 +6,6 @@ import { HeroSection } from "@/components/HeroSection";
 import { AgentStatusCards } from "@/components/AgentStatusCards";
 import { OnChainProof } from "@/components/OnChainProof";
 import { ActivityFeed } from "@/components/ActivityFeed";
-import { SwapPanel } from "@/components/SwapPanel";
 import { RouterStatsPanel } from "@/components/RouterStatsPanel";
 
 const POLL_INTERVAL_MS = 3000;

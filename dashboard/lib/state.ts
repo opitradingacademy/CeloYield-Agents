@@ -12,14 +12,16 @@
 import { AgentStatus, BalanceSnapshot, DashboardState, PoolSnapshot, RecentTransaction, RiskSnapshot, ActivityEvent } from "./types";
 import { readRecentActivity } from "../../shared/activity-log";
 
-const SIGNAL_AGENT_URL = process.env.SIGNAL_AGENT_URL || "http://localhost:3001";
-const RISK_AGENT_URL = process.env.RISK_AGENT_URL || "http://localhost:3002";
+const SIGNAL_AGENT_URL = process.env.SIGNAL_AGENT_URL || "https://celoyield-signal.vercel.app";
+const RISK_AGENT_URL = process.env.RISK_AGENT_URL || "https://celoyield-risk.vercel.app";
 const WALLET_ADDRESS = process.env.AGENT_WALLET_ADDRESS || "0x2254256D89F17789f112335D643F52d3B043dF7E";
-const BLOCKSCOUT_API = "https://celo-sepolia.blockscout.com/api";
+export const BLOCKSCOUT_API = "https://celo.blockscout.com/api";
+export const EXPLORER_BASE = "https://celo.blockscout.com";
 
+// Mainnet token addresses — see shared/network.ts NETWORKS.mainnet.
 const TOKEN_ADDRESSES = {
-  USDC: "0x01C5C0122039549AD1493B8220cABEdD739BC44E",
-  USDm: "0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b",
+  USDC: "0xcebA9300f2b948710d2653dD7B07f33A8B32118C",
+  USDm: "0x765DE816845861e75A25fCA122bb6898B8B1282a",
 } as const;
 
 async function fetchWithPayment(url: string): Promise<any | null> {
@@ -135,9 +137,9 @@ export async function buildDashboardState(): Promise<DashboardState> {
   const agents: AgentStatus[] = [
     {
       name: "yield-router-agent",
-      role: "Orchestrator",
-      url: "http://localhost:3000",
-      port: 3000,
+      role: "Orchestrator (Railway background worker)",
+      url: "",
+      port: 0,
       feePerCall: 0,
       callsReceived: 0,
       totalEarned: 0,

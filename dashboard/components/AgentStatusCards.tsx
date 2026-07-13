@@ -34,15 +34,18 @@ function AgentCard({ agent }: { agent: AgentStatus }) {
           <div className="mt-1 text-xs text-zinc-500">{agent.role}</div>
         </div>
         <div className="text-right text-xs">
-          <div className="text-zinc-400">port {agent.port}</div>
-          <a
-            href={agent.url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-celo-gold/60 hover:text-celo-gold"
-          >
-            {agent.url}
-          </a>
+          {agent.url ? (
+            <a
+              href={agent.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-celo-gold/60 hover:text-celo-gold"
+            >
+              {agent.url}
+            </a>
+          ) : (
+            <div className="text-zinc-600">no public endpoint</div>
+          )}
         </div>
       </div>
 

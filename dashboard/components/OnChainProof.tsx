@@ -14,7 +14,7 @@ export function OnChainProof({ balance, recentTransactions, walletAddress, pool,
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold">On-Chain Proof</h2>
         <a
-          href={`https://celo-sepolia.blockscout.com/address/${walletAddress}`}
+          href={`https://celo.blockscout.com/address/${walletAddress}`}
           target="_blank"
           rel="noreferrer"
           className="text-xs text-celo-gold/70 hover:text-celo-gold"
@@ -118,7 +118,7 @@ function TxRow({ tx }: { tx: RecentTransaction }) {
 
   return (
     <a
-      href={`https://celo-sepolia.blockscout.com/tx/${tx.hash}`}
+      href={`https://celo.blockscout.com/tx/${tx.hash}`}
       target="_blank"
       rel="noreferrer"
       className="flex items-center justify-between rounded border border-zinc-800 bg-zinc-950/30 px-2 py-1.5 hover:border-zinc-700"
