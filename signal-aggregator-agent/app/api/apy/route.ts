@@ -34,7 +34,7 @@ export async function GET(req: Request) {
   const data = await aggregateApyForAsset(asset);
   const ms = Date.now() - start;
 
-  logActivity({
+  await logActivity({
     agent: "signal-aggregator",
     type: "info",
     message: `Served APY snapshot for ${asset}: ${data.observations.length} pools scanned, best = ${data.bestPool?.pairLabel ?? "none"} (${ms}ms, charged $0.001)`,

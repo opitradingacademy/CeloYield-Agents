@@ -1,22 +1,26 @@
 // Shared activity log for the 3-agent cooperative system.
 //
-// Each agent writes events to a JSONL file at shared/.activity.jsonl. The
-// dashboard polls this file every 3s and surfaces the events in the live
-// Activity Feed. This is a low-fi substitute for a proper event bus — fine
-// for a hackathon demo where all 3 agents + the dashboard run on the same host.
+// In production the 3 agents run on separate Vercel/Railway instances with
+// no shared filesystem, so a local JSONL file can't work as the log — each
+// instance would only ever see its own writes. Backed by Upstash Redis's
+// REST API instead: it works identically from Vercel serverless functions
+// and from the Railway background worker (plain HTTPS, no persistent TCP
+// connection needed). Falls back to a local JSONL file when
+// UPSTASH_REDIS_REST_URL/TOKEN aren't set, so local dev works with zero setup.
 
-import { appendFileSync, existsSync, readFileSync, statSync, openSync, readSync, closeSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { existsSync as exists } from "node:fs";
+
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const REDIS_KEY = "celoyield:activity";
+const MAX_ENTRIES = 200;
 
 function resolveLogPath(): string {
-  // Walk up from cwd until we find a `shared/` directory (not the file —
-  // it might not exist yet on first run). The shared/ dir is the canonical
-  // marker that we're inside the celo-agentic-payments workspace.
   let cwd = process.cwd();
   for (let i = 0; i < 6; i++) {
     const sharedDir = join(cwd, "shared");
-    if (exists(sharedDir)) return join(sharedDir, ".activity.jsonl");
+    if (existsSync(sharedDir)) return join(sharedDir, ".activity.jsonl");
     const parent = dirname(cwd);
     if (parent === cwd) break;
     cwd = parent;
@@ -35,26 +39,67 @@ export interface ActivityLogEntry {
   data?: Record<string, unknown>;
 }
 
-// Append a single event. Called from any agent.
-export function logActivity(entry: Omit<ActivityLogEntry, "id" | "ts">) {
+async function redisCommand(...args: (string | number)[]): Promise<any> {
+  const path = args.map((a) => encodeURIComponent(String(a))).join("/");
+  const res = await fetch(`${REDIS_URL}/${path}`, {
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+  });
+  if (!res.ok) throw new Error(`Upstash ${res.status}`);
+  const data = (await res.json()) as { result: unknown };
+  return data.result;
+}
+
+// Append a single event. Called from any agent. Awaited where the caller is
+// a serverless function that would otherwise freeze before the write lands
+// (Next.js API routes); fire-and-forget is fine from the long-lived
+// yield-router-agent process.
+export async function logActivity(entry: Omit<ActivityLogEntry, "id" | "ts">): Promise<void> {
   const full: ActivityLogEntry = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     ts: new Date().toISOString(),
     ...entry,
   };
+  const line = JSON.stringify(full);
+
+  if (REDIS_URL && REDIS_TOKEN) {
+    try {
+      await redisCommand("lpush", REDIS_KEY, line);
+      await redisCommand("ltrim", REDIS_KEY, 0, MAX_ENTRIES - 1);
+    } catch {
+      // best-effort — a dropped log entry shouldn't break the caller
+    }
+    return;
+  }
+
   try {
-    appendFileSync(LOG_PATH, JSON.stringify(full) + "\n", "utf-8");
+    appendFileSync(LOG_PATH, line + "\n", "utf-8");
   } catch {
     // best-effort
   }
 }
 
-// Read the last N events. The dashboard calls this every poll cycle.
-// We read the file once and parse line-by-line — for hackathon scale this
-// is plenty fast (even at 100 events/sec this is <1ms).
-export function readRecentActivity(limit = 50): ActivityLogEntry[] {
+// Read the last N events, most recent first. The dashboard calls this every
+// poll cycle.
+export async function readRecentActivity(limit = 50): Promise<ActivityLogEntry[]> {
+  if (REDIS_URL && REDIS_TOKEN) {
+    try {
+      const lines: string[] = (await redisCommand("lrange", REDIS_KEY, 0, limit - 1)) ?? [];
+      const events: ActivityLogEntry[] = [];
+      for (const line of lines) {
+        try {
+          events.push(JSON.parse(line) as ActivityLogEntry);
+        } catch {
+          // skip malformed entries
+        }
+      }
+      return events;
+    } catch {
+      return [];
+    }
+  }
+
   try {
-    if (!exists(LOG_PATH)) return [];
+    if (!existsSync(LOG_PATH)) return [];
     const content = readFileSync(LOG_PATH, "utf-8");
     const lines = content.trim().split("\n").filter(Boolean);
     const events: ActivityLogEntry[] = [];
@@ -65,7 +110,6 @@ export function readRecentActivity(limit = 50): ActivityLogEntry[] {
         // skip malformed lines (partial writes during agent activity)
       }
     }
-    // Return most recent first, capped at limit
     return events.reverse().slice(0, limit);
   } catch {
     return [];
@@ -73,7 +117,13 @@ export function readRecentActivity(limit = 50): ActivityLogEntry[] {
 }
 
 // Clear the log. Useful for demos.
-export function clearActivityLog() {
+export async function clearActivityLog(): Promise<void> {
+  if (REDIS_URL && REDIS_TOKEN) {
+    try {
+      await redisCommand("del", REDIS_KEY);
+    } catch {}
+    return;
+  }
   try {
     writeFileSync(LOG_PATH, "", "utf-8");
   } catch {}

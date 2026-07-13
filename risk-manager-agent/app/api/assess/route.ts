@@ -42,7 +42,7 @@ export async function GET(req: Request) {
   const data = await assessRisk(protocol, asset);
   const ms = Date.now() - start;
 
-  logActivity({
+  await logActivity({
     agent: "risk-manager",
     type: "info",
     message: `Served risk assessment for ${protocol}/${asset}: score ${data.score}/100 (${ms}ms, charged $0.002)`,

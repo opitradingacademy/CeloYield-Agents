@@ -104,7 +104,7 @@ export async function buildDashboardState(): Promise<DashboardState> {
 
   // Read the activity log (up to 30 most recent events) so the live feed
   // shows what each agent did since the dashboard last polled.
-  const activityEvents = readRecentActivity(30);
+  const activityEvents = await readRecentActivity(30);
 
   const pool: PoolSnapshot | null = signalQuote?.bestPool
     ? {
