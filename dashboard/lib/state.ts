@@ -146,13 +146,18 @@ export async function buildDashboardState(): Promise<DashboardState> {
       }
     : null;
 
-  // Agent status — counts of paid calls come from the tx list (approvals +
-  // transfers in the wallet's history that targeted the agents). For a quick
-  // MVP we estimate from on-chain activity rather than tracking a DB.
-  const signalCalls = recentTransactions.filter(
-    (tx) => tx.method === "0xa9059cbb" || tx.method === "0x095ea7b3",
-  ).length; // rough proxy
-  const riskCalls = 0;
+  // Agent status — counts of paid calls come from the router's own activity
+  // log ("signal-paid"/"risk-paid" events), the same source RouterStatsPanel
+  // uses. Previously this counted generic ERC20 transfer/approve method sigs
+  // from the router wallet's last 8 txs (mostly unrelated Uniswap activity)
+  // and hardcoded riskCalls to 0 — always showed 0 calls / $0 earned even
+  // when the router was paying both agents every cycle.
+  const signalCalls = activityEvents.filter(
+    (e) => e.agent === "yield-router" && e.type === "signal-paid",
+  ).length;
+  const riskCalls = activityEvents.filter(
+    (e) => e.agent === "yield-router" && e.type === "risk-paid",
+  ).length;
 
   const agents: AgentStatus[] = [
     {
