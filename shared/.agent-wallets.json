@@ -1,0 +1,25 @@
+{
+  "signer-test-v1": {
+    "walletId": "e3vvdmky924zne009uczyj58",
+    "address": "0x2254256D89F17789f112335D643F52d3B043dF7E",
+    "createdAt": "2026-07-10T17:59:46.138Z"
+  },
+  "yield-router-agent-v1": {
+    "walletId": "e3vvdmky924zne009uczyj58",
+    "address": "0x2254256D89F17789f112335D643F52d3B043dF7E",
+    "createdAt": "2026-07-10T22:30:00.000Z",
+    "note": "Re-mapped 2026-07-10 to reuse the signer-test-v1 wallet (had funds). Original yield-router-agent-v1 wallet (0xF08...) was empty."
+  },
+  "signal-aggregator-agent-v1": {
+    "walletId": "e3vvdmky924zne009uczyj58",
+    "address": "0x2254256D89F17789f112335D643F52d3B043dF7E",
+    "createdAt": "2026-07-10T22:30:00.000Z",
+    "note": "Reuses the same funded wallet for cooperative x402 testnet."
+  },
+  "risk-manager-agent-v1": {
+    "walletId": "e3vvdmky924zne009uczyj58",
+    "address": "0x2254256D89F17789f112335D643F52d3B043dF7E",
+    "createdAt": "2026-07-10T22:30:00.000Z",
+    "note": "Reuses the same funded wallet for cooperative x402 testnet."
+  }
+}

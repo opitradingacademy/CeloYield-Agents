@@ -5,5 +5,5 @@ node_modules/
 dist/
 .next/
 *.tsbuildinfo
-shared/.agent-wallets.json
 yield-router-agent/decisions.log
+.vercel
