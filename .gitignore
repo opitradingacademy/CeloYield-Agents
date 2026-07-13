@@ -7,3 +7,4 @@ dist/
 *.tsbuildinfo
 yield-router-agent/decisions.log
 .vercel
+shared/.activity.jsonl
