@@ -181,6 +181,19 @@ export async function fetchWithPaymentReal(
     nonce: BigInt(nonce),
   });
 
+  // Wait for the payment tx to land before returning. The payer wallet is
+  // shared across all outbound payments in a single router cycle (pays
+  // signal, then risk, from the same address) — without this, the next
+  // fetchWithPaymentReal call reads a stale nonce via getTransactionCount
+  // (still pointing at this unconfirmed tx) and collides with it, which
+  // Privy's broadcaster rejects outright instead of queuing.
+  try {
+    await client.waitForTransactionReceipt({ hash: txHash, timeout: 20_000 });
+  } catch {
+    // best-effort — proceed to verification even if we couldn't confirm
+    // client-side; the server's own settleReal() will poll for the receipt.
+  }
+
   return fetch(url, {
     ...options,
     headers: { ...options.headers, "x-payment-tx": txHash },

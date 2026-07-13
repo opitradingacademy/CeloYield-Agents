@@ -11,15 +11,15 @@
     "note": "Re-mapped 2026-07-10 to reuse the signer-test-v1 wallet (had funds). Original yield-router-agent-v1 wallet (0xF08...) was empty."
   },
   "signal-aggregator-agent-v1": {
-    "walletId": "e3vvdmky924zne009uczyj58",
-    "address": "0x2254256D89F17789f112335D643F52d3B043dF7E",
-    "createdAt": "2026-07-10T22:30:00.000Z",
-    "note": "Reuses the same funded wallet for cooperative x402 testnet."
+    "walletId": "bomr9nbxsshrrvzxbtv6n3c7",
+    "address": "0x7318805D1E79a5A08A26214dCB99C5F07dCD578a",
+    "createdAt": "2026-07-13T15:00:00.000Z",
+    "note": "Dedicated wallet, created 2026-07-13 to replace the shared/self-transfer wallet — x402 payments must land on a distinct address to be real inter-agent payments, not self-transfers."
   },
   "risk-manager-agent-v1": {
-    "walletId": "e3vvdmky924zne009uczyj58",
-    "address": "0x2254256D89F17789f112335D643F52d3B043dF7E",
-    "createdAt": "2026-07-10T22:30:00.000Z",
-    "note": "Reuses the same funded wallet for cooperative x402 testnet."
+    "walletId": "vnnfuaez04tb2ktho4apvyw3",
+    "address": "0x5314540B295596754BF5aEEd351C8d38dD884548",
+    "createdAt": "2026-07-13T15:00:00.000Z",
+    "note": "Dedicated wallet, created 2026-07-13 to replace the shared/self-transfer wallet — x402 payments must land on a distinct address to be real inter-agent payments, not self-transfers."
   }
 }
