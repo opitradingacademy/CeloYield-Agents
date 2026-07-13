@@ -27,7 +27,7 @@ const USDC_VERSION = "2";
 // operator controls works for generating it — used a personal Rabby wallet
 // here since the router's Privy wallet has no exportable key for a browser
 // extension to connect with.
-const FACILITATOR_API_KEY = process.env.FACILITATOR_API_KEY ?? "";
+const FACILITATOR_API_KEY = process.env.X402 ?? "";
 
 function facilitatorHeaders(): Record<string, string> {
   return {
