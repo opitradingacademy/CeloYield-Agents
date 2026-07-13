@@ -1,17 +1,10 @@
 {
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "nixpacksPlan": {
-      "phases": {
-        "install": {
-          "cmds": ["npm install --legacy-peer-deps"]
-        }
-      }
-    }
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile.router"
   },
   "deploy": {
-    "startCommand": "cd yield-router-agent && npx tsx src/index.ts",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 5
   }
