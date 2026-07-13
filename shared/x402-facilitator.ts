@@ -19,6 +19,23 @@ const NETWORK_ID = "celo"; // x402Version 1 network identifier for Celo mainnet
 const USDC_NAME = "USDC";
 const USDC_VERSION = "2";
 
+// Generated at x402.celo.org by connecting a wallet (browser extension only —
+// WalletConnect isn't offered) and signing a sign-in message. The key only
+// authenticates the project against the facilitator; it is NOT bound to the
+// payer wallet, since each payment's authorization is separately signed
+// on-chain (EIP-3009) by whichever wallet is actually paying. Any wallet the
+// operator controls works for generating it — used a personal Rabby wallet
+// here since the router's Privy wallet has no exportable key for a browser
+// extension to connect with.
+const FACILITATOR_API_KEY = process.env.FACILITATOR_API_KEY ?? "";
+
+function facilitatorHeaders(): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    ...(FACILITATOR_API_KEY ? { "X-API-Key": FACILITATOR_API_KEY } : {}),
+  };
+}
+
 export interface X402FacilitatorConfig {
   /** Price in USD, e.g. "$0.001" */
   price: string;
@@ -111,7 +128,7 @@ export async function settleFacilitator(
 
   const verifyRes = await fetch(`${FACILITATOR_URL}/verify`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: facilitatorHeaders(),
     body: JSON.stringify({ x402Version: 1, paymentPayload, paymentRequirements: requirements }),
   });
   const verifyBody = (await verifyRes.json()) as { isValid: boolean; invalidReason?: string; payer?: Address };
@@ -126,7 +143,7 @@ export async function settleFacilitator(
 
   const settleRes = await fetch(`${FACILITATOR_URL}/settle`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: facilitatorHeaders(),
     body: JSON.stringify({ x402Version: 1, paymentPayload, paymentRequirements: requirements }),
   });
   const settleBody = (await settleRes.json()) as {
