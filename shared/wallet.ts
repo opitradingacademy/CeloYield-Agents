@@ -200,6 +200,27 @@ export async function getAgentAccount(externalId: string) {
       });
       return result.signature as Hex;
     },
+    // EIP-712 signing — used for the x402 "exact" scheme's EIP-3009
+    // TransferWithAuthorization (gasless USDC payment authorization),
+    // required to settle through the official Celo x402 facilitator.
+    async signTypedData(input: {
+      domain: Record<string, unknown>;
+      types: Record<string, { name: string; type: string }[]>;
+      primaryType: string;
+      message: Record<string, unknown>;
+    }): Promise<Hex> {
+      const result = await privy.wallets().ethereum().signTypedData(walletId, {
+        params: {
+          typed_data: {
+            domain: input.domain,
+            types: input.types,
+            primary_type: input.primaryType,
+            message: input.message,
+          },
+        },
+      });
+      return result.signature as Hex;
+    },
   };
 }
 

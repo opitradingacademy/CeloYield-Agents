@@ -16,14 +16,15 @@ import { ApyFetcher } from "./apy-fetcher";
 import { evaluateMove, type MoveCandidate } from "./decision";
 import { executeMove, type SwapResult } from "./executor";
 import { fetchWithPayment, fetchWithPaymentReal } from "../../shared/x402-mock";
+import { fetchWithFacilitatorPayment } from "../../shared/x402-facilitator";
 
-const LIVE_X402 = process.env.X402_MODE === "live";
+const X402_MODE = process.env.X402_MODE ?? "mock";
 const YIELD_ROUTER_WALLET_ID = "yield-router-agent-v1";
 
 async function pay(url: string): Promise<Response> {
-  return LIVE_X402
-    ? fetchWithPaymentReal(url, YIELD_ROUTER_WALLET_ID)
-    : fetchWithPayment(url);
+  if (X402_MODE === "facilitator") return fetchWithFacilitatorPayment(url, YIELD_ROUTER_WALLET_ID);
+  if (X402_MODE === "live") return fetchWithPaymentReal(url, YIELD_ROUTER_WALLET_ID);
+  return fetchWithPayment(url);
 }
 import { logActivity } from "../../shared/activity-log";
 import { getNetwork } from "../../shared/network";
