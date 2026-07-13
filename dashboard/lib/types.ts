@@ -43,6 +43,7 @@ export interface DashboardState {
   balance: BalanceSnapshot;
   pool: PoolSnapshot | null;
   risk: RiskSnapshot | null;
+  totalPaidUsd: number;
   lastUpdated: string;
 }
 

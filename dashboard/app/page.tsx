@@ -117,7 +117,7 @@ export default function Dashboard() {
       </div>
 
       <div className="mt-8">
-        <RouterStatsPanel events={allEvents} />
+        <RouterStatsPanel events={allEvents} totalPaidUsd={state?.totalPaidUsd ?? 0} />
       </div>
 
       <div className="mt-8">

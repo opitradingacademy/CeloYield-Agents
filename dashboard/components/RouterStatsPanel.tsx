@@ -4,6 +4,7 @@ import { ActivityEvent } from "@/lib/types";
 
 interface Props {
   events: ActivityEvent[];
+  totalPaidUsd: number;
 }
 
 interface Counter {
@@ -23,7 +24,7 @@ const TYPES = {
   error: { label: "Errors", color: "border-red-500/40" },
 } as const;
 
-export function RouterStatsPanel({ events }: Props) {
+export function RouterStatsPanel({ events, totalPaidUsd }: Props) {
   // Filter events that come from the yield-router-agent only (skip signal/risk
   // serving events which inflate the count).
   const routerEvents = events.filter((e) => e.agent === "yield-router");
@@ -40,7 +41,6 @@ export function RouterStatsPanel({ events }: Props) {
 
   const signalPays = routerEvents.filter((e) => e.type === "signal-paid").length;
   const riskPays = routerEvents.filter((e) => e.type === "risk-paid").length;
-  const totalPaid = signalPays * 0.001 + riskPays * 0.002;
 
   // What is the router doing right now? Look at the most recent event.
   const latest = routerEvents[0];
@@ -65,7 +65,7 @@ export function RouterStatsPanel({ events }: Props) {
         {counters.slice(4).map((c) => (
           <CounterCard key={c.label} counter={c} />
         ))}
-        <CostCard totalPaid={totalPaid} cycles={Math.min(signalPays, riskPays)} />
+        <CostCard totalPaid={totalPaidUsd} cycles={Math.min(signalPays, riskPays)} />
       </div>
     </section>
   );

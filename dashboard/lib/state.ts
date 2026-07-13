@@ -26,6 +26,12 @@ const TOKEN_ADDRESSES = {
   USDm: "0x765DE816845861e75A25fCA122bb6898B8B1282a",
 } as const;
 
+// Dedicated per-agent wallets — see CLAUDE.md "All 3 agents shared one Privy
+// wallet" gotcha (fixed 2026-07-13).
+const SIGNAL_WALLET = "0x7318805D1E79a5A08A26214dCB99C5F07dCD578a";
+const RISK_WALLET = "0x5314540B295596754BF5aEEd351C8d38dD884548";
+const NATIVE_TAGGED_METHOD = "0x63656c6f"; // withAttributionTag() calldata prefix on self-facilitated native transfers
+
 async function fetchWithPayment(url: string): Promise<any | null> {
   // First call → 402 → retry with mock payment header (matches shared/x402-mock).
   const res1 = await fetch(url, { cache: "no-store" });
@@ -88,6 +94,47 @@ async function fetchBalance(): Promise<BalanceSnapshot> {
   }
 }
 
+// Ground-truth payment counts, read directly from chain history instead of
+// the activity log. The activity log is a Redis list capped at 200 entries
+// (shared/activity-log.ts LTRIM) and this dashboard only reads the most
+// recent 30 of those — so any counter derived from it (calls, totalEarned,
+// "Total paid to other agents") silently shrinks as older signal-paid/
+// risk-paid events get evicted by newer poll/skip/quote events, even though
+// the underlying payments are still real and permanent on-chain. Counting
+// straight from Blockscout removes that windowing effect.
+async function fetchPaymentCounts(): Promise<{ signalCalls: number; riskCalls: number }> {
+  try {
+    const [usdcRes, nativeRes] = await Promise.all([
+      fetch(
+        `${BLOCKSCOUT_API}?module=account&action=tokentx&address=${WALLET_ADDRESS}&sort=desc&page=1&offset=500`,
+      ).then((r) => r.json()),
+      fetch(
+        `${BLOCKSCOUT_API}?module=account&action=txlist&address=${WALLET_ADDRESS}&sort=desc&page=1&offset=500`,
+      ).then((r) => r.json()),
+    ]);
+
+    const usdcTxs: any[] = usdcRes?.result ?? [];
+    const nativeTxs: any[] = nativeRes?.result ?? [];
+
+    const isFromRouter = (t: any) => t.from?.toLowerCase() === WALLET_ADDRESS.toLowerCase();
+    const isUsdc = (t: any) => t.contractAddress?.toLowerCase() === TOKEN_ADDRESSES.USDC.toLowerCase();
+    const isTaggedNative = (t: any) => (t.input ?? "").toLowerCase().startsWith(NATIVE_TAGGED_METHOD);
+
+    const countTo = (addr: string) =>
+      usdcTxs.filter((t) => isFromRouter(t) && isUsdc(t) && t.to?.toLowerCase() === addr.toLowerCase()).length +
+      nativeTxs.filter(
+        (t) => isFromRouter(t) && isTaggedNative(t) && t.to?.toLowerCase() === addr.toLowerCase(),
+      ).length;
+
+    return {
+      signalCalls: countTo(SIGNAL_WALLET),
+      riskCalls: countTo(RISK_WALLET),
+    };
+  } catch {
+    return { signalCalls: 0, riskCalls: 0 };
+  }
+}
+
 async function fetchRecentTxs(): Promise<RecentTransaction[]> {
   try {
     const res = await fetch(
@@ -112,7 +159,7 @@ async function fetchRecentTxs(): Promise<RecentTransaction[]> {
 
 export async function buildDashboardState(): Promise<DashboardState> {
   // Ping agents in parallel for liveness
-  const [signalStatus, riskStatus, signalQuote, riskQuote, balance, recentTransactions] =
+  const [signalStatus, riskStatus, signalQuote, riskQuote, balance, recentTransactions, paymentCounts] =
     await Promise.all([
       pingAgent(`${SIGNAL_AGENT_URL}/`),
       pingAgent(`${RISK_AGENT_URL}/`),
@@ -120,6 +167,7 @@ export async function buildDashboardState(): Promise<DashboardState> {
       fetchWithPayment(`${RISK_AGENT_URL}/api/assess?protocol=Mento&asset=USDC`),
       fetchBalance(),
       fetchRecentTxs(),
+      fetchPaymentCounts(),
     ]);
 
   // Read the activity log (up to 30 most recent events) so the live feed
@@ -146,18 +194,14 @@ export async function buildDashboardState(): Promise<DashboardState> {
       }
     : null;
 
-  // Agent status — counts of paid calls come from the router's own activity
-  // log ("signal-paid"/"risk-paid" events), the same source RouterStatsPanel
-  // uses. Previously this counted generic ERC20 transfer/approve method sigs
-  // from the router wallet's last 8 txs (mostly unrelated Uniswap activity)
-  // and hardcoded riskCalls to 0 — always showed 0 calls / $0 earned even
-  // when the router was paying both agents every cycle.
-  const signalCalls = activityEvents.filter(
-    (e) => e.agent === "yield-router" && e.type === "signal-paid",
-  ).length;
-  const riskCalls = activityEvents.filter(
-    (e) => e.agent === "yield-router" && e.type === "risk-paid",
-  ).length;
+  // Agent status — counts of paid calls come from fetchPaymentCounts(), a
+  // direct Blockscout tally of USDC (facilitator mode) and tagged native
+  // CELO (live mode) transfers to each agent's wallet. Not derived from the
+  // activity log: that's a Redis list capped at 200 entries and this
+  // dashboard only reads the latest 30, so a log-derived count silently
+  // shrinks as older signal-paid/risk-paid events get evicted — even though
+  // the payments themselves are permanent on-chain.
+  const { signalCalls, riskCalls } = paymentCounts;
 
   const agents: AgentStatus[] = [
     {
@@ -200,6 +244,7 @@ export async function buildDashboardState(): Promise<DashboardState> {
     balance,
     pool,
     risk,
+    totalPaidUsd: signalCalls * 0.001 + riskCalls * 0.002,
     lastUpdated: new Date().toISOString(),
   };
 }
