@@ -9,6 +9,8 @@
 // Polling happens on a 3-second cadence from the client; this function runs
 // per request, no internal caching.
 
+import { createPublicClient, http, erc20Abi } from "viem";
+import { celo } from "viem/chains";
 import { AgentStatus, BalanceSnapshot, DashboardState, PoolSnapshot, RecentTransaction, RiskSnapshot, ActivityEvent } from "./types";
 import { readRecentActivity } from "../../shared/activity-log";
 
@@ -51,17 +53,35 @@ async function pingAgent(url: string): Promise<"running" | "stopped"> {
   }
 }
 
+// Blockscout's tokenbalance endpoint reports stale ERC-20 balances for this
+// wallet on Celo mainnet (confirmed: reported 0 USDC via API while a direct
+// RPC balanceOf() call returned 2076324, i.e. 2.076324 USDC — the same kind
+// of stale-RPC/indexer issue previously seen on Celo Sepolia, now hitting
+// Blockscout's mainnet API instead). Native CELO balance via Blockscout is
+// accurate, so only token balances are read via direct RPC.
+const RPC_CLIENT = createPublicClient({ chain: celo, transport: http("https://forno.celo.org") });
+
 async function fetchBalance(): Promise<BalanceSnapshot> {
   try {
-    const [celoRes, usdcRes, usdmRes] = await Promise.all([
+    const [celoRes, usdc, usdm] = await Promise.all([
       fetch(`${BLOCKSCOUT_API}?module=account&action=balance&address=${WALLET_ADDRESS}`).then((r) => r.json()),
-      fetch(`${BLOCKSCOUT_API}?module=account&action=tokenbalance&contractaddress=${TOKEN_ADDRESSES.USDC}&address=${WALLET_ADDRESS}`).then((r) => r.json()),
-      fetch(`${BLOCKSCOUT_API}?module=account&action=tokenbalance&contractaddress=${TOKEN_ADDRESSES.USDm}&address=${WALLET_ADDRESS}`).then((r) => r.json()),
+      RPC_CLIENT.readContract({
+        address: TOKEN_ADDRESSES.USDC as `0x${string}`,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [WALLET_ADDRESS as `0x${string}`],
+      }),
+      RPC_CLIENT.readContract({
+        address: TOKEN_ADDRESSES.USDm as `0x${string}`,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [WALLET_ADDRESS as `0x${string}`],
+      }),
     ]);
     return {
       celo: celoRes?.result ?? "0",
-      usdc: usdcRes?.result ?? "0",
-      usdm: usdmRes?.result ?? "0",
+      usdc: usdc.toString(),
+      usdm: usdm.toString(),
     };
   } catch {
     return { celo: "0", usdc: "0", usdm: "0" };
