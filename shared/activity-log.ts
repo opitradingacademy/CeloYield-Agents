@@ -60,23 +60,17 @@ export async function logActivity(entry: Omit<ActivityLogEntry, "id" | "ts">): P
     ...entry,
   };
   const line = JSON.stringify(full);
-  console.log("[activity-log] logActivity called, type=", entry.type, "hasUrl=", !!REDIS_URL, "hasToken=", !!REDIS_TOKEN);
 
   if (REDIS_URL && REDIS_TOKEN) {
     try {
       await redisCommand("lpush", REDIS_KEY, line);
       await redisCommand("ltrim", REDIS_KEY, 0, MAX_ENTRIES - 1);
-      console.log("[activity-log] write ok");
-    } catch (e) {
-      console.log("[activity-log] logActivity Upstash write failed:", e);
+    } catch {
+      // best-effort — a dropped log entry shouldn't break the caller
     }
     return;
   }
 
-  console.log(
-    "[activity-log] UPSTASH_REDIS_REST_URL/TOKEN not set — falling back to local file",
-    LOG_PATH,
-  );
   try {
     appendFileSync(LOG_PATH, line + "\n", "utf-8");
   } catch {
