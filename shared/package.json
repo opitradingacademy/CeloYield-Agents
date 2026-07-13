@@ -1,0 +1,10 @@
+{
+  "name": "shared",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@mento-protocol/mento-sdk": "^3.2.8",
+    "@privy-io/node": "^0.25.0",
+    "viem": "2.39.0"
+  }
+}
