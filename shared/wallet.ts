@@ -9,12 +9,13 @@ import { getNetwork } from "./network";
 // leaderboard credits x402 payments + on-chain volume to this project.
 // Invisible to the called contract — pure calldata suffix.
 //
-// Re-registered 2026-07-13: the prior tag (celo_baf40ede1a50) belonged to a
-// submission draft under an account we could no longer confirm access to.
-// This is the tag from the current, confirmed submission
-// (opitradingacademy/CeloYield-Agents) — only transactions sent after this
-// change count toward the leaderboard for this submission.
-const ATTRIBUTION_TAG = "celo_d9e61ce2001a";
+// Confirmed 2026-07-13: this tag already has credited volume on the public
+// Dune leaderboard (dune.com/celo/agentic-payments-defai-hackathon), so it
+// must stay as-is. It belongs to a celobuilders.xyz submission registered
+// under a different Google account than the one used to reconnect this
+// session — that account needs to re-authenticate to regain control of the
+// actual submission, rather than rotating the tag.
+const ATTRIBUTION_TAG = "celo_baf40ede1a50";
 
 function withAttributionTag(data?: Hex): Hex {
   const suffix = toDataSuffix(ATTRIBUTION_TAG); // 0x-prefixed ERC-8021 suffix bytes
