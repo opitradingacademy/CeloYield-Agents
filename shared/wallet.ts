@@ -4,11 +4,17 @@ import { celo, celoSepolia } from "viem/chains";
 import { toDataSuffix } from "@celo/attribution-tags";
 import { getNetwork } from "./network";
 
-// Celo Builders hackathon attribution tag (agentic-payments-defai, registered
-// 2026-07-13). Appended to every outbound tx's calldata as an ERC-8021 suffix
-// so the Dune leaderboard credits x402 payments + on-chain volume to this
-// project. Invisible to the called contract — pure calldata suffix.
-const ATTRIBUTION_TAG = "celo_baf40ede1a50";
+// Celo Builders hackathon attribution tag (agentic-payments-defai). Appended
+// to every outbound tx's calldata as an ERC-8021 suffix so the Dune
+// leaderboard credits x402 payments + on-chain volume to this project.
+// Invisible to the called contract — pure calldata suffix.
+//
+// Re-registered 2026-07-13: the prior tag (celo_baf40ede1a50) belonged to a
+// submission draft under an account we could no longer confirm access to.
+// This is the tag from the current, confirmed submission
+// (opitradingacademy/CeloYield-Agents) — only transactions sent after this
+// change count toward the leaderboard for this submission.
+const ATTRIBUTION_TAG = "celo_d9e61ce2001a";
 
 function withAttributionTag(data?: Hex): Hex {
   const suffix = toDataSuffix(ATTRIBUTION_TAG); // 0x-prefixed ERC-8021 suffix bytes
