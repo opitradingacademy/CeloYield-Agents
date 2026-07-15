@@ -160,6 +160,39 @@ rather than relying on the root `.env` being picked up.
   fire-and-forget in `yield-router-agent` (long-lived process, errors
   already swallowed internally).
 
+### Dashboard data bugs found 2026-07-13
+- **Blockscout's `tokenbalance` API reports stale ERC-20 balances on Celo
+  mainnet, not just Sepolia.** `dashboard/lib/state.ts` was reading USDC/USDm
+  balances via `${BLOCKSCOUT_API}?module=account&action=tokenbalance&...`,
+  which returned `0` for the router wallet even though a direct RPC
+  `balanceOf()` call (viem `readContract` against `forno.celo.org`) returned
+  `2076324` (2.076324 USDC) — confirmed real via the wallet's on-chain
+  `tokentx` history showing the actual incoming transfer. Fixed by reading
+  ERC-20 balances via direct RPC (`erc20Abi.balanceOf`) instead of
+  Blockscout; native CELO balance via Blockscout's `action=balance` is
+  accurate and was left as-is.
+- **`AgentStatusCards`' calls/earned counters were a broken MVP placeholder,
+  not wired to real data.** `signalCalls` counted `0xa9059cbb`/`0x095ea7b3`
+  method signatures across the router wallet's last 8 transactions (mostly
+  unrelated Uniswap approve/swap activity, not actually filtered by
+  recipient), and `riskCalls` was hardcoded to `0` — always showed 0
+  calls / $0 earned for both paid agents even while the router was paying
+  them every cycle. Fixed by counting `signal-paid`/`risk-paid` events from
+  the router's own activity log (`activityEvents`, same source
+  `RouterStatsPanel` already used correctly) instead.
+- **`totalEarned`/`totalPaidUsd` understated real spend by 8-17x (fixed
+  2026-07-14).** `dashboard/lib/state.ts` computed these as
+  `calls * feePerCall` (flat `$0.001`/`$0.002`), which is only correct for
+  facilitator-mode USDC settlements (exact amounts). Live-mode self-settled
+  native CELO transfers move a gas-derived amount (~0.014-0.028 CELO, i.e.
+  ~$0.008-$0.017 at $0.6/CELO) that has nothing to do with the nominal fee,
+  and once both payment modes were mixed in the same tx history (499 USDC +
+  198 tagged-native txs found 2026-07-14) the flat multiplication silently
+  hid most of the real value moved. Fixed by summing the actual amount per
+  tx (`formatUnits(value, 6)` for USDC, `formatEther(value) * celoUsd` for
+  native, using `shared/pricing.ts`'s now-exported `getCeloUsdPrice()`)
+  instead of multiplying counts by a constant.
+
 ### Workspace / Next.js
 - npm workspaces + Next.js sub-packages: keep ONLY the root
   `package-lock.json`. Tailwind in root `dependencies` (not devDependencies)
@@ -173,6 +206,14 @@ rather than relying on the root `.env` being picked up.
 - `X402_MODE=mock` (default) is a header-based fake facilitator. Zero cost.
 - `X402_MODE=thirdweb` = $99/mo + 0.3%/tx. Only switch deliberately.
 - thirdweb's `wrapFetchWithPayment` needs a thirdweb `Wallet` not raw viem.
+- **The official facilitator's API key env var is named `X402`** (not
+  `FACILITATOR_API_KEY` — the code was briefly written against that name
+  before settling on `X402` to match what was already set locally/on
+  Vercel/Railway). Set in `.env` locally, and as `X402` on both Vercel
+  projects (signal, risk) and Railway (router) — separate from `X402_MODE`
+  (`mock`/`live`/`facilitator`), which is a different variable. See "Known
+  gaps" below for why `facilitator` mode is still off despite the key being
+  wired correctly (Celo's own relayer wallet is out of gas, not our bug).
 
 ### ERC-8004 registration
 - `register(string)` with `data:` URIs ≥2KB reverts with out-of-gas even at
@@ -344,31 +385,54 @@ Session summary lives in engram with session_id
 
 ## Known gaps / next steps
 
-- **Blocked: x402 official-facilitator mode needs an API key.**
-  `shared/x402-facilitator.ts` (commit `3568efc`) fully implements the x402
-  "exact" scheme (EIP-3009 TransferWithAuthorization in USDC) against Celo's
-  official facilitator at `api.x402.celo.org` — `POST /verify` works with no
-  auth and returns `isValid:true`, but `POST /settle` returns `401
-  {"error":"unauthorized","message":"Missing X-API-Key"}`. No public docs
-  (docs.celo.org, the x402-foundation spec, or the celobuilders.xyz
-  hackathon FAQ) mention how to obtain this key. **Next session: ask the
-  Celo Builders hackathon team (Telegram/Discord) this exact question:**
-  *"How do I get an API key for the official Celo x402 facilitator at
-  api.x402.celo.org? /verify works without authentication, but /settle
-  returns 401 'Missing X-API-Key'. Is there a registration process or
-  dashboard, or should I contact someone specific to get provisioned?"*
-  Once obtained, set it wherever `shared/x402-facilitator.ts`'s
-  `settleFacilitator()`/`fetchWithFacilitatorPayment()` calls `fetch()`
-  against `FACILITATOR_URL` (needs an `X-API-Key` header added — not yet
-  wired since we don't have a key to test with), then flip `X402_MODE` to
-  `facilitator` in all 3 services (currently reverted to `live` everywhere
-  because every payment failed with `settlement_failed` while this was on).
-  This matters because the Dune leaderboard's `x402_settlements` /
-  `x402_volume_usd` columns only count facilitator-settled payments — our
-  self-facilitated `live` mode shows up in `tagged_volume_usd` (counts for
-  "Most Revenue Generated") but NOT `x402_settlements` (doesn't count for
-  "Most x402 Payments"), confirmed by checking
-  dune.com/celo/agentic-payments-defai-hackathon directly.
+- **RESOLVED 2026-07-14: official x402 facilitator relayer is now funded and
+  settling for real.** The relayer wallet
+  (`0x0d74D5Cefd2e7F24E623330ebE3d8D4cB45fFB48`) that was stuck at ~0.0177
+  CELO (see prior blocker below, kept for history) now holds ~70 CELO and is
+  actively confirming `transferWithAuthorization` settlements on-chain
+  (verified directly via Blockscout, method `0xe3ee160e`, multiple
+  confirmed txs seconds apart). `X402_MODE=facilitator` is live and working:
+  counted 499 real USDC facilitator settlements to signal/risk wallets in
+  the last 500 txs (`npx tsx shared/check-facilitator-settlements.ts`
+  confirms these directly), mixed with 198 tagged native-CELO txs from
+  whatever period ran in `live` mode before the switch. This should now be
+  showing up in Dune's `x402_settlements` column for the "Most x402
+  Payments" track — worth a spot-check next session.
+  <details><summary>Prior blocker (resolved, kept for context)</summary>
+
+  Blocked (infra, not us): official x402 facilitator's relayer wallet was
+  out of gas. API key mystery from an earlier session was resolved —
+  answer from the hackathon team: the key is self-service at x402.celo.org,
+  connect a wallet (browser-extension only, MetaMask/Rabby — no
+  WalletConnect option, so Privy's custodial router wallet can't connect
+  directly; used the operator's personal Rabby wallet instead, which is fine
+  because the key only authenticates the *project* against the facilitator —
+  it is NOT cryptographically bound to whichever wallet actually pays, since
+  each payment's EIP-3009 authorization is separately signed on-chain).
+  `shared/x402-facilitator.ts` reads the key from `process.env.X402` (not
+  `FACILITATOR_API_KEY` — renamed to match the env var name already used
+  everywhere) and sends it as `X-API-Key` on both `/verify` and `/settle`.
+  With the key wired, `/verify` returned `isValid:true` but `/settle` failed
+  with `insufficient funds for gas * price + value` on the relayer's own
+  wallet — reproduced identically 3x in a row, so it wasn't transient.
+  </details>
+
+- **Attribution tag verified clean (2026-07-14).** User saw a second tag
+  `celo_d9e61ce2001a` alongside ours on the Dune leaderboard and asked to
+  confirm nothing on our side is misconfigured. Verified three ways: (1)
+  grepped the whole repo — only `celo_baf40ede1a50` exists, hardcoded once
+  in `shared/wallet.ts:18`; (2) decoded the raw calldata of a real
+  facilitator settlement tx — exactly 292 bytes, the standard
+  `transferWithAuthorization` param length with zero extra bytes, so those
+  txs carry no ERC-8021 suffix at all (ours or anyone else's), since the
+  facilitator's relayer builds them, not our code; (3) reconnected via the
+  `celo-builders` skill and called `GET /submissions/me` directly — exactly
+  one submission on this account, `attributionTag: "celo_baf40ede1a50"`,
+  matching the code. `celo_d9e61ce2001a` cannot originate from this repo,
+  this account, or the facilitator settlement txs — most likely another
+  team's tag getting cross-attributed on Dune's side, or a Dune indexing
+  bug. Worth reporting to the Celo Builders team with this evidence if it
+  persists.
 - Activity Feed now centralized on Upstash Redis (see gotchas below) and
   confirmed working end-to-end in production.
 - Dashboard deployed: https://celoyield-dashboard.vercel.app
