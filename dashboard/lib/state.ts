@@ -9,10 +9,11 @@
 // Polling happens on a 3-second cadence from the client; this function runs
 // per request, no internal caching.
 
-import { createPublicClient, http, erc20Abi } from "viem";
+import { createPublicClient, http, erc20Abi, formatUnits, formatEther } from "viem";
 import { celo } from "viem/chains";
 import { AgentStatus, BalanceSnapshot, DashboardState, PoolSnapshot, RecentTransaction, RiskSnapshot, ActivityEvent } from "./types";
 import { readRecentActivity } from "../../shared/activity-log";
+import { getCeloUsdPrice } from "../../shared/pricing";
 
 const SIGNAL_AGENT_URL = process.env.SIGNAL_AGENT_URL || "https://celoyield-signal.vercel.app";
 const RISK_AGENT_URL = process.env.RISK_AGENT_URL || "https://celoyield-risk.vercel.app";
@@ -102,15 +103,27 @@ async function fetchBalance(): Promise<BalanceSnapshot> {
 // risk-paid events get evicted by newer poll/skip/quote events, even though
 // the underlying payments are still real and permanent on-chain. Counting
 // straight from Blockscout removes that windowing effect.
-async function fetchPaymentCounts(): Promise<{ signalCalls: number; riskCalls: number }> {
+//
+// USD value is summed from the real amount moved, not a flat feePerCall
+// guess: USDC facilitator settlements are exact ($0.001/$0.002), but live-mode
+// self-settled native CELO transfers move a gas-derived amount that's
+// typically 8-17x the nominal fee (see shared/pricing.ts usdToCeloWei) —
+// multiplying call count by feePerCall silently understated real spend.
+async function fetchPaymentCounts(): Promise<{
+  signalCalls: number;
+  riskCalls: number;
+  signalUsd: number;
+  riskUsd: number;
+}> {
   try {
-    const [usdcRes, nativeRes] = await Promise.all([
+    const [usdcRes, nativeRes, celoUsd] = await Promise.all([
       fetch(
         `${BLOCKSCOUT_API}?module=account&action=tokentx&address=${WALLET_ADDRESS}&sort=desc&page=1&offset=500`,
       ).then((r) => r.json()),
       fetch(
         `${BLOCKSCOUT_API}?module=account&action=txlist&address=${WALLET_ADDRESS}&sort=desc&page=1&offset=500`,
       ).then((r) => r.json()),
+      getCeloUsdPrice(),
     ]);
 
     const usdcTxs: any[] = usdcRes?.result ?? [];
@@ -120,18 +133,28 @@ async function fetchPaymentCounts(): Promise<{ signalCalls: number; riskCalls: n
     const isUsdc = (t: any) => t.contractAddress?.toLowerCase() === TOKEN_ADDRESSES.USDC.toLowerCase();
     const isTaggedNative = (t: any) => (t.input ?? "").toLowerCase().startsWith(NATIVE_TAGGED_METHOD);
 
-    const countTo = (addr: string) =>
-      usdcTxs.filter((t) => isFromRouter(t) && isUsdc(t) && t.to?.toLowerCase() === addr.toLowerCase()).length +
-      nativeTxs.filter(
-        (t) => isFromRouter(t) && isTaggedNative(t) && t.to?.toLowerCase() === addr.toLowerCase(),
-      ).length;
+    const usdcTo = (addr: string) =>
+      usdcTxs.filter((t) => isFromRouter(t) && isUsdc(t) && t.to?.toLowerCase() === addr.toLowerCase());
+    const nativeTo = (addr: string) =>
+      nativeTxs.filter((t) => isFromRouter(t) && isTaggedNative(t) && t.to?.toLowerCase() === addr.toLowerCase());
+
+    const usdValueTo = (addr: string) => {
+      const usdcSum = usdcTo(addr).reduce((sum, t) => sum + Number(formatUnits(BigInt(t.value ?? "0"), 6)), 0);
+      const nativeSum = nativeTo(addr).reduce(
+        (sum, t) => sum + Number(formatEther(BigInt(t.value ?? "0"))) * celoUsd,
+        0,
+      );
+      return usdcSum + nativeSum;
+    };
 
     return {
-      signalCalls: countTo(SIGNAL_WALLET),
-      riskCalls: countTo(RISK_WALLET),
+      signalCalls: usdcTo(SIGNAL_WALLET).length + nativeTo(SIGNAL_WALLET).length,
+      riskCalls: usdcTo(RISK_WALLET).length + nativeTo(RISK_WALLET).length,
+      signalUsd: usdValueTo(SIGNAL_WALLET),
+      riskUsd: usdValueTo(RISK_WALLET),
     };
   } catch {
-    return { signalCalls: 0, riskCalls: 0 };
+    return { signalCalls: 0, riskCalls: 0, signalUsd: 0, riskUsd: 0 };
   }
 }
 
@@ -194,14 +217,19 @@ export async function buildDashboardState(): Promise<DashboardState> {
       }
     : null;
 
-  // Agent status — counts of paid calls come from fetchPaymentCounts(), a
+  // Agent status — counts and USD totals come from fetchPaymentCounts(), a
   // direct Blockscout tally of USDC (facilitator mode) and tagged native
   // CELO (live mode) transfers to each agent's wallet. Not derived from the
   // activity log: that's a Redis list capped at 200 entries and this
   // dashboard only reads the latest 30, so a log-derived count silently
   // shrinks as older signal-paid/risk-paid events get evicted — even though
   // the payments themselves are permanent on-chain.
-  const { signalCalls, riskCalls } = paymentCounts;
+  //
+  // totalEarned is the real USD value moved on-chain, not calls * feePerCall:
+  // live-mode native CELO transfers are a gas-derived amount, not exactly
+  // feePerCall, so the flat multiplication understated real spend by 8-17x
+  // whenever live-mode payments were mixed in with facilitator settlements.
+  const { signalCalls, riskCalls, signalUsd, riskUsd } = paymentCounts;
 
   const agents: AgentStatus[] = [
     {
@@ -221,7 +249,7 @@ export async function buildDashboardState(): Promise<DashboardState> {
       port: 3001,
       feePerCall: 0.001,
       callsReceived: signalCalls,
-      totalEarned: signalCalls * 0.001,
+      totalEarned: signalUsd,
       status: signalStatus,
     },
     {
@@ -231,7 +259,7 @@ export async function buildDashboardState(): Promise<DashboardState> {
       port: 3002,
       feePerCall: 0.002,
       callsReceived: riskCalls,
-      totalEarned: riskCalls * 0.002,
+      totalEarned: riskUsd,
       status: riskStatus,
     },
   ];
@@ -244,7 +272,7 @@ export async function buildDashboardState(): Promise<DashboardState> {
     balance,
     pool,
     risk,
-    totalPaidUsd: signalCalls * 0.001 + riskCalls * 0.002,
+    totalPaidUsd: signalUsd + riskUsd,
     lastUpdated: new Date().toISOString(),
   };
 }

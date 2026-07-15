@@ -14,7 +14,7 @@ const SWAP_GAS_UNITS = 400_000n;
 let cachedCeloUsd: { price: number; fetchedAt: number } | null = null;
 const CELO_PRICE_TTL_MS = 5 * 60 * 1000;
 
-async function getCeloUsdPrice(): Promise<number> {
+export async function getCeloUsdPrice(): Promise<number> {
   if (cachedCeloUsd && Date.now() - cachedCeloUsd.fetchedAt < CELO_PRICE_TTL_MS) {
     return cachedCeloUsd.price;
   }
