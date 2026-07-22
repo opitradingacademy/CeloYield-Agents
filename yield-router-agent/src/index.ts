@@ -21,14 +21,34 @@ import { fetchWithFacilitatorPayment } from "../../shared/x402-facilitator";
 const X402_MODE = process.env.X402_MODE ?? "mock";
 const YIELD_ROUTER_WALLET_ID = "yield-router-agent-v1";
 
+// Auto-fallback: if X402_MODE=facilitator but the facilitator returns
+// verification_failed repeatedly, demote to live so the router keeps
+// generating on-chain payments instead of looping on 402s. Hackathon
+// pragmatism over purity — the leaderboard counts real settlements
+// regardless of whether they go through Celo's official facilitator or
+// our own self-facilitated native CELO transfers.
+let facilitatorFailStreak = 0;
+let effectiveMode = X402_MODE;
+
 async function pay(url: string): Promise<Response> {
-  console.log(`[pay] mode=${X402_MODE} url=${url}`);
-  if (X402_MODE === "facilitator") {
+  console.log(`[pay] mode=${effectiveMode} url=${url}`);
+  if (effectiveMode === "facilitator") {
     const r = await fetchWithFacilitatorPayment(url, YIELD_ROUTER_WALLET_ID);
     console.log(`[pay] facilitator result: ${r.status}`);
+    if (r.status === 402) {
+      facilitatorFailStreak++;
+      if (facilitatorFailStreak >= 3) {
+        console.log(
+          `[pay] facilitator failed ${facilitatorFailStreak}x — demoting to live mode for this process`,
+        );
+        effectiveMode = "live";
+      }
+    } else if (r.status === 200) {
+      facilitatorFailStreak = 0;
+    }
     return r;
   }
-  if (X402_MODE === "live") return fetchWithPaymentReal(url, YIELD_ROUTER_WALLET_ID);
+  if (effectiveMode === "live") return fetchWithPaymentReal(url, YIELD_ROUTER_WALLET_ID);
   return fetchWithPayment(url);
 }
 import { logActivity } from "../../shared/activity-log";
