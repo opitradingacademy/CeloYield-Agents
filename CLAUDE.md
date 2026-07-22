@@ -21,13 +21,17 @@ risk-manager-agent/       sells risk scores for $0.002/req (Next.js, port 3002)
 dashboard/                live ops dashboard (Next.js, port 3003)
 ```
 
-## Current state (as of 2026-07-13, evening session)
+## Current state (as of 2026-07-22)
 
 **All 7 packages type-check clean** (`npx tsc --noEmit` in each).
 
+**Hackathon runs through 2026-08-03 09:00 UTC** (not 07-20 as initially
+noted — confirmed via `/hackathons/agentic-payments-defai` re-fetch on
+2026-07-22). 12 days remaining when this entry was written.
+
 **Pivoted from Sepolia demo to a live Celo MAINNET deployment** for the
 Celo Builders hackathon `agentic-payments-defai` (submission slug
-`CeloYield Agents`, runs through 2026-07-20 09:00 UTC). Mainnet is a hard
+`CeloYield Agents`). Mainnet is a hard
 rule of that hackathon — Sepolia activity does not count for the leaderboard.
 
 **Production deployment (all 3 agents live, unattended):**
@@ -70,6 +74,27 @@ first (`shared/network.ts` mainnet wallet: see below).
   (`shared/pricing.ts` `estimateGasCostUsd()`: real `eth_gasPrice` × 400k gas
   units × live CELO/USD from CoinGecko), replacing a flat `$0.0005` guess
   that never reflected mainnet reality.
+
+**x402 payments now flowing on mainnet (since 2026-07-22 17:30 UTC):**
+27+ tagged native-CELO transfers from the router wallet to signal-agent
+(`0x7318…578a`) and risk-agent (`0x5314…4548`), ~0.0136 CELO each, total
+volume ~0.438 CELO (~$0.031 at $0.072/CELO). Each 180s cycle generates
+1 signal payment ($0.001) + 1 risk payment ($0.002) → ~480 cycles/day × 12
+days = ~5,760 x402 settlements expected before hackathon close. A
+`fetchWithPaymentReal` robustness fix landed 2026-07-22 (parses
+`maxAmountRequired` from facilitator's "exact" scheme when `price` is
+absent) so the router degrades gracefully when a server is in the wrong
+mode instead of crashing on `Cannot read properties of undefined`.
+
+**Funds remaining (2026-07-22):**
+Router wallet `0x2254256D89F17789f112335D643F52d3B043dF7E` holds ~209 CELO
+(~$15 at $0.072/CELO) and **0 USDC / 0 USDm** — enough for thousands more
+cycles at $0.003/each, but not enough to execute any meaningful Mento swap
+(needs both sides seeded + deviation >$0.0059 gas to be profitable).
+`TRADE_AMOUNT_USDM=0.2` is the configured per-trade size; tracks
+`most-revenue-generated` will not credit swaps until deviation opens up
+naturally or the operator manually seeds USDC + USDm and runs a one-off
+swap from Rabby to demonstrate the path.
 
 ## Local dev servers (Sepolia / manual testing only)
 
@@ -442,8 +467,48 @@ Session summary lives in engram with session_id
   moot in production anyway since `AUTO_APPROVE=true` there).
 - Submission published (`https://celobuilders.xyz`, project "CeloYield
   Agents", tracks `most-x402-payments` + `most-revenue-generated`) — can
-  still be edited until the hackathon deadline (2026-07-20 09:00 UTC).
+  still be edited until the hackathon deadline (2026-08-03 09:00 UTC).
+- **Update submission before 03-ago**: post a fresh build-in-public summary
+  pointing at the new on-chain payment volume (10+ txs visible on Blockscout
+  from `0x2254…3dF7E` since 17:30 UTC) so the entry reflects more than
+  the 13-jul Sepolia-era metrics.
 - Router wallet USDC: swapped 20 CELO → 1.359559 USDC via Uniswap V3 (Mento
   has no CELO/USDC pool — see gotchas). Balance ~2.08 USDC, funds the
   facilitator mode once the API key issue above is resolved. Majority of
   the 232 CELO deposit (2026-07-13) stays as CELO for gas / router trading.
+
+### Found 2026-07-22
+
+- **`.env` duplicate key corruption** is silent — `X402_MODE=live` on line 39
+  followed by `X402_MODE=x402_71968404ce...` on line 40 makes Node's
+  `--env-file` parser silently take the last value, producing an invalid
+  mode string `x402_71968404ce...` that no branch in `pay()` matches,
+  so `fetchWithPayment()` (mock) is called instead. Production (Railway +
+  Vercel) reads env vars from the dashboard and is unaffected; only the
+  local `.env` is broken. Fix is `delete one of the duplicate lines` — but
+  for safety, never name a variable `X402_MODE=x402_...` (easy to confuse
+  with the `X402` facilitator-API-key env var). When updating env vars
+  locally, always verify with
+  `node --env-file=.env -e "console.log(process.env.X402_MODE)"` to
+  catch this kind of paste-collision.
+- **`fetchWithPaymentReal()` originally required `accept.price`** (the
+  `celo-native` scheme) and crashed with `Cannot read properties of
+  undefined (reading 'replace')` when the server was in `facilitator`
+  mode (offers `scheme: "exact"`, `maxAmountRequired`, no `price`).
+  Fixed 2026-07-22 to parse either `price` (live mode, USD) or
+  `maxAmountRequired` (facilitator mode, USDC atomic units ÷ 1e6), and
+  bail to the original 402 if neither is set. Same fix should be in
+  any future client that consumes x402 402 bodies.
+- **Railway deploys can stay QUEUED for hours** when the platform is
+  under upstream GitHub webhook load. `serviceInstanceDeployV2` /
+  `serviceInstanceRedeploy` returns `true` immediately even when the
+  build never starts — the only signal is `statusUpdatedAt` flipping
+  from `null` to a timestamp. Don't trust a successful redeploy API
+  call as proof the new code is live; poll `service.deployments` every
+  minute until `status: "SUCCESS"`.
+- **Restart ≠ pick up new env var on Railway**: changing `X402_MODE`
+  via `variableUpsert` doesn't make the running container reload its
+  env. You need either a real `serviceInstanceRedeploy` (which queues
+  a new build) or `deploymentRestart` on the current SUCCESS deployment
+  — both write a fresh deployment row that also goes through the queue.
+  No zero-downtime env swap exists in Railway's API.
