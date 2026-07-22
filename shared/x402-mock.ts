@@ -158,10 +158,25 @@ export async function fetchWithPaymentReal(
   if (first.status !== 402) return first;
 
   const body = (await first.json()) as {
-    accepts?: { price: string; payTo: Address }[];
+    accepts?: { price?: string; maxAmountRequired?: string; scheme?: string; payTo: Address }[];
   };
   const accept = body.accepts?.[0];
   if (!accept) return first;
+
+  // The server might be in any x402 mode (mock, celo-native, or the
+  // facilitator's "exact" scheme). We only know how to self-facilitate a
+  // native-CELO transfer here, so require a parsed price + payTo — anything
+  // else and we return the original 402 untouched for the caller to handle.
+  let priceUsd: number;
+  if (typeof accept.price === "string") {
+    priceUsd = parsePriceUsd(accept.price);
+  } else if (typeof accept.maxAmountRequired === "string") {
+    // Facilitator scheme encodes price as atomic USDC (6 decimals).
+    priceUsd = Number(accept.maxAmountRequired) / 1_000_000;
+  } else {
+    return first;
+  }
+  if (!Number.isFinite(priceUsd) || priceUsd <= 0) return first;
 
   const wallet = await getAgentAccount(payerExternalId);
   const network = getNetwork();
@@ -170,7 +185,7 @@ export async function fetchWithPaymentReal(
     transport: http(network.rpcUrl),
   });
   const nonce = await client.getTransactionCount({ address: wallet.account!.address });
-  const value = await usdToCeloWei(parsePriceUsd(accept.price));
+  const value = await usdToCeloWei(priceUsd);
 
   const { parseGwei } = await import("viem");
   const txHash = await wallet.sendTransactionLegacy({
