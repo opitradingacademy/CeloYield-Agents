@@ -194,13 +194,19 @@ export async function fetchWithFacilitatorPayment(
   const first = await fetch(url, options);
   if (first.status !== 402) return first;
 
-  const body = (await first.json()) as { accepts?: PaymentRequirements[] };
+  console.log(`[x402-facilitator] 402 received from ${url}`);
+  const body = (await first.json()) as { accepts?: PaymentRequirements[]; error?: string };
   const accept = body.accepts?.[0];
-  if (!accept) return first;
+  if (!accept) {
+    console.log(`[x402-facilitator] no accepts in body: ${JSON.stringify(body).slice(0,200)}`);
+    return first;
+  }
+  console.log(`[x402-facilitator] payTo=${accept.payTo} asset=${accept.asset} value=${accept.maxAmountRequired}`);
 
   const wallet = await getAgentAccount(payerExternalId);
   const network = getNetwork();
   const from = wallet.account.address;
+  console.log(`[x402-facilitator] payer=${from} chainId=${network.chainId}`);
 
   const now = Math.floor(Date.now() / 1000);
   const authorization = {
@@ -229,12 +235,19 @@ export async function fetchWithFacilitatorPayment(
     ],
   };
 
-  const signature = await wallet.signTypedData({
-    domain,
-    types,
-    primaryType: "TransferWithAuthorization",
-    message: authorization,
-  });
+  console.log(`[x402-facilitator] signing EIP-712 TransferWithAuthorization...`);
+  let signature: Hex;
+  try {
+    signature = await wallet.signTypedData({
+      domain,
+      types,
+      primaryType: "TransferWithAuthorization",
+      message: authorization,
+    });
+  } catch (e: any) {
+    console.log(`[x402-facilitator] SIGN FAILED: ${e?.message ?? e}`);
+    return first;
+  }
 
   const paymentPayload: PaymentPayload = {
     x402Version: 1,
@@ -243,9 +256,18 @@ export async function fetchWithFacilitatorPayment(
     payload: { signature, authorization },
   };
   const xPayment = Buffer.from(JSON.stringify(paymentPayload)).toString("base64");
+  console.log(`[x402-facilitator] retrying with X-PAYMENT (${xPayment.length} chars)`);
 
-  return fetch(url, {
+  const second = await fetch(url, {
     ...options,
     headers: { ...options.headers, "x-payment": xPayment },
   });
+  console.log(`[x402-facilitator] retry status: ${second.status}`);
+  if (second.status === 402) {
+    try {
+      const errBody = await second.clone().json();
+      console.log(`[x402-facilitator] retry 402 body: ${JSON.stringify(errBody).slice(0,400)}`);
+    } catch {}
+  }
+  return second;
 }

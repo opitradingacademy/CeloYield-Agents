@@ -22,7 +22,12 @@ const X402_MODE = process.env.X402_MODE ?? "mock";
 const YIELD_ROUTER_WALLET_ID = "yield-router-agent-v1";
 
 async function pay(url: string): Promise<Response> {
-  if (X402_MODE === "facilitator") return fetchWithFacilitatorPayment(url, YIELD_ROUTER_WALLET_ID);
+  console.log(`[pay] mode=${X402_MODE} url=${url}`);
+  if (X402_MODE === "facilitator") {
+    const r = await fetchWithFacilitatorPayment(url, YIELD_ROUTER_WALLET_ID);
+    console.log(`[pay] facilitator result: ${r.status}`);
+    return r;
+  }
   if (X402_MODE === "live") return fetchWithPaymentReal(url, YIELD_ROUTER_WALLET_ID);
   return fetchWithPayment(url);
 }
